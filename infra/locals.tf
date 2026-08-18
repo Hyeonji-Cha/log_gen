@@ -1,7 +1,7 @@
 locals {
   #자동으로 계산하여 AZ 영역 결정 -> a/b
   availability_zones = slice(
-    data.aws_availability_zones.available, # 사용가능한 az 목록
+    data.aws_availability_zones.available.names, # 사용가능한 az 목록
     0,                                     # 시작인덱스
     length(var.public_subnet_cidrs)        # 끝인덱스 => 2
   )

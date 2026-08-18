@@ -50,7 +50,11 @@ resource "aws_route" "internet" {
 
 # 퍼블릭 서브넷, IGW(연결)
 resource "aws_route_table_association" "public" {
-  # 퍼블릭 서브넷 2개 -> 2번연결
-  count          = length(aws_subnet.public[count.index].id)
-  route_table_id = aws_route.public.id
+  count = length(aws_subnet.public) # 원래 association은 서브넷 하나만 연결 가능
+                                    # count를 사용하면 count.index를 자동으로 제공 -> 2개 생성
+                                    # count.index = 0 → 첫 번째 서브넷 연결, count.index = 1 → 두 번째 서브넷 연결
+  # subnet id의 길이를  count하면 subnet 이름 길이를 세는 것으로 id-> 그냥 서브넷으로 수정
+
+  subnet_id      = aws_subnet.public[count.index].id
+  route_table_id = aws_route_table.public.id
 }
