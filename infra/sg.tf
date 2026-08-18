@@ -1,7 +1,7 @@
 # ECS-> Cloudwatch -> s3, kinesis... -> 외부연결 X
 resource "aws_security_group" "fargate" {
   name        = "${var.project_name}-fargate-sg"
-  description = "외부 연결 없이 fargate 전용"
+  description = "Security group for Fargate tasks"
   vpc_id      = aws_vpc.this.id
   # ingress allow 정의하지 않아서 모두 차단됨
   tags = {

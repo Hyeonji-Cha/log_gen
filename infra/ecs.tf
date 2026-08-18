@@ -1,0 +1,71 @@
+# ECS 리소스를 논리적으로 묶어 관리하는 클러스터
+# Fargate를 사용하므로 EC2 컨테이너 인스턴스를 직접 등록하거나 관리하지 않는다.
+resource "aws_ecs_cluster" "this" {
+  name = local.cluster_name
+}
+
+# Fargate에서 실행할 로그 생성기 태스크의 명세
+# 사용할 이미지, CPU·메모리, 실행 권한, 환경 변수, 로그 전송 방법을 정의한다.
+resource "aws_ecs_task_definition" "generator" {
+  # 같은 태스크 정의의 개정 이력을 묶는 이름
+  # 설정이 변경되면 같은 family 아래에 1, 2, 3과 같이 새 revision이 생성된다.
+  family = local.task_family
+
+  # 이 태스크 정의가 Fargate 실행 방식과 호환되어야 함을 지정한다.
+  requires_compatibilities = ["FARGATE"]
+
+  # 태스크마다 전용 ENI와 사설 IP를 할당하는 네트워크 모드
+  # 실제 서브넷과 보안 그룹은 태스크를 실행할 때 별도로 지정한다.
+  network_mode = "awsvpc"
+
+  # 태스크 전체에 할당할 Fargate CPU와 메모리
+  # ECS API가 문자열을 요구하므로 숫자형 variable을 문자열로 변환한다.
+  cpu    = tostring(var.task_cpu)
+  memory = tostring(var.task_memory)
+
+  # ECS 에이전트가 ECR에서 이미지를 가져오고 CloudWatch Logs로 로그를 전송할 때 사용하는 역할
+  # 애플리케이션 코드가 AWS API를 호출할 권한은 task_role_arn으로 별도 지정해야 한다.
+  execution_role_arn = aws_iam_role.ecs_execution.arn
+
+  # 컨테이너를 실행할 운영체제와 CPU 아키텍처
+  runtime_platform {
+    operating_system_family = "LINUX"
+    cpu_architecture        = "X86_64"
+  }
+
+  # ECS가 요구하는 JSON 형식으로 컨테이너 설정을 생성한다.
+  container_definitions = jsonencode([
+    {
+      name      = "log-generator"
+      image     = "${aws_ecr_repository.generator.repository_url}:${var.image_tag}"
+      essential = true
+
+      environment = [
+        { name = "DOMAIN", value = "ecommerce" },
+        { name = "DURATION_SECONDS", value = "300" },
+        { name = "MAX_EVENTS", value = "0" },
+        { name = "BASE_RPS", value = "2.0" },
+        { name = "TIME_SCALE", value = "1.0" },
+        { name = "CORRUPTION_RATE", value = "0.03" },
+        { name = "INCLUDE_CORRUPTION_LABEL", value = "false" },
+        { name = "OUTPUT_MODE", value = "stdout" },
+        { name = "LOG_FILE", value = "/tmp/generated-logs.jsonl" },
+        { name = "TIMEZONE", value = "Asia/Seoul" },
+        { name = "FAKER_LOCALE", value = "ko_KR" },
+        { name = "ENVIRONMENT", value = "simulation" },
+        { name = "RUN_ID", value = "manual" }
+      ]
+
+      logConfiguration = {
+        # 컨테이너의 stdout/stderr를 CloudWatch Logs로 전송한다.
+        logDriver = "awslogs"
+
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.generator.name
+          "awslogs-region"        = var.aws_region
+          "awslogs-stream-prefix" = "generator"
+        }
+      }
+    }
+  ])
+}

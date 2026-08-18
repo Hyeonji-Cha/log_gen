@@ -1,8 +1,8 @@
 # Terraform
 infra/.terraform/
 #infra/*.tfstate
-#infra/*.tfstate.*
-infra/.terraform.lock.hcl
+infra/*.tfstate.*
+infra/*.terraform.lock.hcl
 infra/terraform.tfvars
 
 # Python

@@ -13,7 +13,7 @@ variable "project_name" {
 variable "vpc_cidr" {
   description = "VPC CIDR, fargate 전용"
   type        = string
-  default     = "10.0.0.0/16"
+  default     = "10.20.0.0/16"
 }
 
 variable "public_subnet_cidrs" {
@@ -31,13 +31,13 @@ variable "public_subnet_cidrs" {
 }
 
 # fargate task CPU
-variable "task_CPU" {
+variable "task_cpu" {
   description = "cpu unit =>512 ==0.5 vCPU"
   type        = number
   default     = 512
 }
 # fargate task MEMORY
-variable "task_memeory" {
+variable "task_memory" {
   description = "memory Mib"
   type        = number
   default     = 1024
