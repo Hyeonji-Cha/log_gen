@@ -5,7 +5,7 @@ from faker import Faker
 fake = Faker("ko_KR") # ko_KR는 환경변수에서 획득
 
 def run() -> int:
-  log = ecommerce.generate(fake, timezone_name="", envrionment="", run_id="")
+  log = ecommerce.generate(fake, timezone_name="", environment="", run_id="")
   print( log )
   # 정상 실행 종료 표시
   return 0

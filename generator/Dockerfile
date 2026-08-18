@@ -11,7 +11,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 소스카피
+# 소스 복사
 COPY app ./app
 
 # 컨테이너 실행되면 구동할 명령어
