@@ -5,11 +5,11 @@
 data "aws_iam_policy_document" "ecs_tasks_assume" {
   statement {
     effect  = "Allow"
-    actions = ["sts:AssumeRole"]
+    actions = ["sts:AssumeRole"] # ECS가 이 역할을 맡아서 임시 인증 정보를 받을 수 있다.
 
     principals {
       type        = "Service"
-      identifiers = ["ecs-tasks.amazonaws.com"]
+      identifiers = ["ecs-tasks.amazonaws.com"] # IAM ROLE은 ECS TASK 서비스가 사용할 수 있다.
     }
   }
 }
