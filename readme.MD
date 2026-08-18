@@ -174,4 +174,60 @@ pip install -r generator/requirements.txt
 
   # 샘플 
   scripts\run-local.bat finance 4 5 0.05 both 1
+
+# 해석
+  finance 도메인 로그 생성
+  ↓
+  60초 동안 실행
+  ↓
+  평균 5 RPS 속도로 생성된다
+  ↓
+  5% 오엽 데이터를 구성
+  ↓
+  출력은 stdout, file, both(둘다)
+  file은 output 폴더 내부에 기록
+  ↓
+  시간 배율 조절은 1
+
 ```
+
+- setup.bat
+```
+  Terraform init
+      ↓
+  Terraform apply
+      ↓
+  ECR Repository 생성
+  ECS/Fargate 관련 인프라 생성
+      ↓
+  AWS ECR 로그인
+      ↓
+  Docker 이미지 Build
+      ↓
+  ECR에 latest 이미지 Push
+```
+
+
+
+- run-generator.bat
+  - AWS fargate에서 진행
+```
+  # 전체 옵션
+  scripts\run-generator.bat [DOMAIN] [DURATION] [BASE_RPS] [CORRUPTION_RATE] [TASK_COUNT] [REGION] [TIME_SCALE]
+
+  # 흐름
+  로컬 PC 명령 수행
+  ↓
+  AWS ecs run-task 가동
+  ↓
+  ECS Cluster 
+  ↓
+  Fargate task 작동
+  ↓
+  Docker Container
+  ↓
+  Python 로그 생성기 작동
+  ↓
+  CloudWatch에 로그 저장
+```
+

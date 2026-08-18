@@ -3,7 +3,7 @@
 import random # 이벤트 속성을 정해진 확률 또는 범위 안에서 무작위로 생성
 from faker import Faker
 import uuid
-from common import http_status
+from app.common import http_status
 
 # 생성할 수 있는 전자상거래 이벤트와 이벤트별 발생 가중치
 # 조회·검색처럼 자주 발생하는 행동은 높게, 결제처럼 드문 행동은 낮게 설정한다.
