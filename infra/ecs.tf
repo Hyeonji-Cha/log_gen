@@ -44,10 +44,10 @@ resource "aws_ecs_task_definition" "generator" {
 
         #[브론즈 추가]
         # 생성한 이벤트를 Kinesis로 전송할지 결정하는 설정
-        { name = "KINESIS_ENABLE", value = "ecommerce"},
+        { name = "KINESIS_ENABLE", value = "ecommerce" },
         # 이벤트를 전송할 Kinesis Data Stream 이름
         { name = "KINESIS_STREAM_NAME", value = aws_kinesis_stream.logs.name },
-        
+
         # 생성할 로그의 업무 도메인 선택
         { name = "DOMAIN", value = "ecommerce" },
         # 로그 생성기를 실행할 총 시간(초)

@@ -45,17 +45,17 @@ data "aws_iam_policy_document" "firehose_assume" {
   statement {
     effect  = "Allow"
     actions = ["sts:AssumeRole"]
-    
+
     principals {
       type        = "Service"
       identifiers = ["firehose.amazonaws.com"]
     }
-  }  
+  }
 }
 # 2. 위 신뢰 정책을 적용해 Firehose 전용 IAM Role 생성
 resource "aws_iam_role" "firehose" {
   # AWS 계정 내에서 식별할 Role 이름
-  name               = "${var.project_name}-firehose-role"
+  name = "${var.project_name}-firehose-role"
 
   # Firehose 서비스가 이 Role을 AssumeRole할 수 있도록 신뢰 정책 적용
   assume_role_policy = data.aws_iam_policy_document.firehose_assume.json
@@ -99,8 +99,8 @@ data "aws_iam_policy_document" "firehose_s3" {
 # 신뢰 정책은 "Firehose가 Role을 맡을 수 있음"을 정하고,
 # 이 인라인 정책은 "Role을 맡은 Firehose가 Kinesis와 S3에서 무엇을 할 수 있는지"를 정한다.
 resource "aws_iam_role_policy" "firehose" {
-  name = "${var.project_name}-firehose-s3-policy"
-  role = aws_iam_role.firehose.id
+  name   = "${var.project_name}-firehose-s3-policy"
+  role   = aws_iam_role.firehose.id
   policy = data.aws_iam_policy_document.firehose_s3.json
 }
 
