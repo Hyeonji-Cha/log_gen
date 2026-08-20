@@ -41,18 +41,38 @@ resource "aws_ecs_task_definition" "generator" {
       essential = true
 
       environment = [
+
+        #[브론즈 추가]
+        # 생성한 이벤트를 Kinesis로 전송할지 결정하는 설정
+        { name = "KINESIS_ENABLE", value = "ecommerce"},
+        # 이벤트를 전송할 Kinesis Data Stream 이름
+        { name = "KINESIS_STREAM_NAME", value = aws_kinesis_stream.logs.name },
+        
+        # 생성할 로그의 업무 도메인 선택
         { name = "DOMAIN", value = "ecommerce" },
+        # 로그 생성기를 실행할 총 시간(초)
         { name = "DURATION_SECONDS", value = "300" },
+        # 생성할 최대 이벤트 수로, 0이면 개수 제한을 사용하지 않음
         { name = "MAX_EVENTS", value = "0" },
+        # 초당 생성할 기본 이벤트 수(RPS)
         { name = "BASE_RPS", value = "2.0" },
+        # 이벤트 생성 속도 배율로, 1.0이면 기본 속도로 실행
         { name = "TIME_SCALE", value = "1.0" },
+        # 전체 이벤트 중 의도적으로 오염시킬 데이터의 비율
         { name = "CORRUPTION_RATE", value = "0.03" },
+        # 오염된 이벤트에 오염 유형과 여부를 표시할지 결정
         { name = "INCLUDE_CORRUPTION_LABEL", value = "false" },
+        # 생성된 로그의 출력 대상으로 stdout, file, both 중 선택
         { name = "OUTPUT_MODE", value = "stdout" },
+        # 파일 출력 모드를 사용할 때 로그를 저장할 컨테이너 내부 경로
         { name = "LOG_FILE", value = "/tmp/generated-logs.jsonl" },
+        # 로그 발생 시각 계산에 사용할 시간대
         { name = "TIMEZONE", value = "Asia/Seoul" },
+        # Faker가 가짜 데이터를 생성할 때 사용할 지역 설정
         { name = "FAKER_LOCALE", value = "ko_KR" },
+        # 로그를 생성한 실행 환경을 구분하는 값
         { name = "ENVIRONMENT", value = "simulation" },
+        # 동일한 실행에서 생성된 이벤트를 묶어 식별할 실행 ID
         { name = "RUN_ID", value = "manual" }
       ]
 
