@@ -95,3 +95,21 @@ Fargate → Kinesis → Firehose → S3 확인 (jsonl, gzip)
 │  ├─ firehose.tf        # 신규
 │  ├─ s3.tf              # 신규
 ```
+# 파이썬 검토 (kinesis로 전송 조정)
+- 패키지
+       ```
+       Faker
+       boto3  # AWS SDK 패키지
+       ```
+       - 로컬 PC에 boto3 설치
+       ```
+              pip install boto3
+       ```
+- config.py
+       - ecs 세팅한 환경변수 전달
+- output.py
+       - 출력 방향에 kinesis 추가
+- main.py
+       - 생성자 매개변수 조정
+
+# bat/shell 검토
