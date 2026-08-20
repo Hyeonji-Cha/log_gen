@@ -27,6 +27,9 @@ resource "aws_ecs_task_definition" "generator" {
   # 애플리케이션 코드가 AWS API를 호출할 권한은 task_role_arn으로 별도 지정해야 한다.
   execution_role_arn = aws_iam_role.ecs_execution.arn
 
+  # 실행 중인 Python 애플리케이션이 생성 이벤트를 Kinesis로 전송할 때 사용하는 역할
+  task_role_arn = aws_iam_role.ecs_task_kinesis.arn
+
   # 컨테이너를 실행할 운영체제와 CPU 아키텍처
   runtime_platform {
     operating_system_family = "LINUX"
@@ -44,7 +47,7 @@ resource "aws_ecs_task_definition" "generator" {
 
         #[브론즈 추가]
         # 생성한 이벤트를 Kinesis로 전송할지 결정하는 설정
-        { name = "KINESIS_ENABLE", value = "ecommerce" },
+        { name = "KINESIS_ENABLED", value = "true" },
         # 이벤트를 전송할 Kinesis Data Stream 이름
         { name = "KINESIS_STREAM_NAME", value = aws_kinesis_stream.logs.name },
 
