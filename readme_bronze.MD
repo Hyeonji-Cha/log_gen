@@ -113,3 +113,48 @@ Fargate → Kinesis → Firehose → S3 확인 (jsonl, gzip)
        - 생성자 매개변수 조정
 
 # bat/shell 검토
+- 코드 수정 => 이미지 수정 => ecr 업데이트 => setup.bat/sh
+```
+# setup.bat
+docker build --no-cache --platform linux/amd64 -t "%REPO%:latest" "%GENERATOR%"
+
+# setup.sh
+docker build --no-cache --platform linux/amd64 -t "$REPO:latest" "$GENERATOR"
+```
+
+# 브론즈 데이터 생성
+- 명령 옵션
+```
+ecommerce       도메인
+5               5초 실행
+5               기본 5 RPS
+0.05            오염 데이터 5%
+1               Fargate Task 1개
+ap-northeast-2  서울 리전
+1               Time Scale 1배
+```
+
+- 명령
+- 25건 로그 생성
+- cloudwatch 로그 기록됨(stdout설정이 기본)
+- kinesis-> firehose-> s3기록됨 (ecs 설정에 환경변수로 세팅되어 있음)
+- s3에서 로그 발생후 언제확인 가능한가? -> 약간의 텀 있음, 1분 후 혹은 1Mib 초과이후 확인 가능함
+
+# 윈도우
+scripts/run-generator.bat ecommerce 5 5 0.05 1 ap-northeast-2 1
+# 맥
+sh /scripts/run-generator.bat ecommerce 5 5 0.05 1 ap-northeast-2 1
+
+
+# jsonl => GZIP으로 압축해서 s3에 저장 (실습)
+- 동일 로그 발생 => 최종 결과문 GZIP으로 저장
+- 조치
+       - 수정
+       ```
+       # ~/infra/firehose.tf
+       # 주석 해제
+       compression_format = "GZIP" # GZIP으로 압축
+       ```
+       - 인프라 반영
+       - 로그 발생 
+       - S3확인
