@@ -1,48 +1,50 @@
-# kinesis -> firehose -> s3
+# Kinesis Data Streams의 로그를 Firehose가 모아서 S3 Bronze 영역에 저장한다.
 resource "aws_kinesis_firehose_delivery_stream" "logs" {
-  # 이름
+  # AWS 콘솔에서 식별할 Firehose Delivery Stream 이름
   name        = local.firehose_name
+  # 최종 목적지로 일반 S3보다 세부 설정이 많은 Extended S3 방식 사용
   destination = "extended_s3"
 
-  # 입력소스 (키네시스, 역활 설정)
+  # Firehose가 데이터를 읽어올 입력 소스로 Kinesis Data Stream 지정
   kinesis_source_configuration {
+    # 로그 제너레이터가 이벤트를 전송하는 Kinesis Stream
     kinesis_stream_arn = aws_kinesis_stream.logs.arn
+    # Firehose가 Kinesis를 읽을 때 사용할 IAM Role
     role_arn           = aws_iam_role.firehose.arn
   }
 
-  # 출력대상
+  # Kinesis에서 읽은 레코드를 모아서 저장할 S3 설정
   extended_s3_configuration {
-    # 버킷
+    # Bronze 데이터를 저장할 S3 Bucket
     bucket_arn = aws_s3_bucket.data.arn
-    # 역활
+    # Firehose가 S3에 객체를 저장할 때 사용할 IAM Role
     role_arn = aws_iam_role.firehose.arn
 
-    # 버퍼 관련 용량, 시간 설정
-    buffering_size     = var.firehose_buffer_size     # 1Mib
-    buffering_interval = var.firehose_buffer_interval # 60초
+    # 지정한 크기 또는 시간이 먼저 충족되면 버퍼의 레코드를 S3 객체로 저장
+    # 현재 기본값: 1MiB 또는 60초
+    buffering_size     = var.firehose_buffer_size
+    buffering_interval = var.firehose_buffer_interval
 
-    # 데이터를 모아둔상태(버퍼링)에서 기록 -> 포멧
-    # 데이터 레코드 압축
-    # compression_format = "UNCOMPRESSED" # 1차는 원본 지정, 활성화되지 않음
-    compression_format = "GZIP" # GZIP으로 압축
+    # 버퍼에 모은 JSONL 레코드를 GZIP으로 압축해 S3 저장 용량을 줄임
+    # 압축을 해제하면 원래의 JSONL 내용으로 확인할 수 있다.
+    # compression_format = "UNCOMPRESSED"
+    compression_format = "GZIP"
 
-    # S3 버킷 및 S3 오류 출력 접두사 시간대
+    # 아래 S3 경로의 연·월·일·시를 한국 시간 기준으로 생성
     custom_time_zone = "Asia/Seoul"
 
-    # 아래 처럼 구성 => partition pruning => Athena/opensearch/Glue/spark등 열기반으로 데이터 추출 유용
-    # S3 버킷 접두사
-    # bronze/year=2026/month=08/day=20/hour=11/.. 이렇게 파티션 가능 -> 검색 속도 빨라짐
+    # 정상 데이터를 시간 단위 파티션 경로에 저장
+    # 예: bronze/year=2026/month=08/day=20/hour=15/
+    # Athena, Glue, Spark가 필요한 시간 경로만 읽을 수 있어 조회 범위와 비용을 줄일 수 있다.
     prefix = "bronze/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/hour=!{timestamp:HH}/"
 
-    # S3 버킷 오류 출력 접두사
-    # 현재는 에러를 단독 구성, 브론즈/실버/골드등 계층 구분 하지 x => 필요시 구성 가능
-    # 경로상에 에러애 대한 타입 지정 -> 유형별로 에러가 모이게 작성
+    # S3 전달에 실패한 데이터를 오류 유형과 발생 시간별 경로에 분리해 저장
+    # !{firehose:error-output-type}에는 Firehose가 판단한 오류 유형이 들어간다.
     error_output_prefix = "error/!{firehose:error-output-type}/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/hour=!{timestamp:HH}/"
   }
 
-  # 의존성
+  # Kinesis 읽기와 S3 쓰기 권한이 먼저 생성된 후 Firehose를 생성
   depends_on = [
-    # 해당 정책 입력/출력 엑세스 권한 생성된 후에 firehose 생성되도록 설정
     aws_iam_role_policy.firehose
   ]
 }
