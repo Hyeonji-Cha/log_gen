@@ -18,7 +18,7 @@ resource "aws_kinesis_stream" "silver" {
 
 resource "aws_kinesis_firehose_delivery_stream" "silver" {
 
-  name = local.firehose_name
+  name = local.silver_firehose_name
 
   destination = "extended_s3"
 
@@ -26,7 +26,7 @@ resource "aws_kinesis_firehose_delivery_stream" "silver" {
 
     kinesis_stream_arn = aws_kinesis_stream.silver.arn
 
-    role_arn = aws_iam_role.firehose.arn
+    role_arn = aws_iam_role.firehose_silver.arn
   }
 
 
@@ -34,7 +34,7 @@ resource "aws_kinesis_firehose_delivery_stream" "silver" {
 
     bucket_arn = aws_s3_bucket.data.arn
 
-    role_arn = aws_iam_role.firehose.arn
+    role_arn = aws_iam_role.firehose_silver.arn
 
     buffering_size     = var.firehose_buffer_size
     buffering_interval = var.firehose_buffer_interval
