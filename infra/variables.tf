@@ -87,3 +87,64 @@ variable "firehose_buffer_interval" {
   type        = number
   default     = 60
 }
+
+# [실버 추가]
+variable "silver_kinesis_shard_count" {
+  description = "KDS's shard count"
+  type        = number
+  default     = 1
+}
+
+variable "silver_kinesis_retantion_hour" {
+  description = "KDS's retantion period in a hour"
+  type        = number
+  default     = 24
+}
+# Pyflink 버전(런타임 환경의 버전) 1.20사용
+variable "flink_runtime_environment" {
+  description = "Managed Service for Apache Flink런타임 환경버전"
+  type        = string
+  default     = "FLINK-1_20"
+}
+# Flink 어플리케이션의 병렬 구성 수 
+# 현재는 1을 기본값, 최소 실행단위
+variable "flink_parallelism" {
+  description = "Initial Flink application parallelism"
+  type        = number
+  default     = 1
+}
+# KPU(Kinesis Processing Unit) 하나당 Parallel task수 설정
+# 과금 단위
+variable "flink_parallelism_per_kpu" {
+  description = "Flink parallel tasks per KPU"
+  type        = number
+  default     = 1
+}
+# flink는 실행 시켜둬야만 실제 처리가 됨
+# true: 인프라 적용되면 -> 실행 -> 실습 편의상 이렇게 진행
+# false: 실제 사용시 적용
+variable "flink_start_application" {
+  description = "Whether Terraform should start the Managed Flink application"
+  type        = bool
+  default     = true
+}
+
+# Flink를 가동한 후 입력쪽(브론즈향)Kinesis에서 데이터를 읽을 때 어디서 부터 처리할 것인가? 설정
+# 데이터는 게속 전송중 -> 추후 Flink 가동
+# -> 가동 전에 도달한 데이터도 처리할 것인가? flink 가동 이후 도착한 데이터만 처리할 것인가?
+# LATEST: flink 가동 후 들어오는 데이터만 처리
+# TRIM_HORIOZON: kinesis에 남아있는 과거 로그 데이터 모두 처리 -> 재처리/테스트/전체 데이터(이전) 처리
+
+variable "flink_source_init_position" {
+  description = "flink가 데이터 처리시 입력 왼쪽에 어디서부터 처리할 것인가 설정"
+  type        = string
+  default     = "LATEST"
+
+  validation {
+    condition = contains([
+      "LATEST",
+      "TRIM_HORIOZON"
+    ], var.flink_source_init_position)
+    error_message = "flink_source_init_position is only LATEST or TRIM HORIZON"
+  }
+}

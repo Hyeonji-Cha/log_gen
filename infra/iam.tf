@@ -114,7 +114,7 @@ resource "aws_iam_role_policy" "firehose" {
 # 1. 기존 ECS Task 신뢰 정책을 적용해 애플리케이션용 Task Role 생성
 resource "aws_iam_role" "ecs_task_kinesis" {
   name               = "${var.project_name}-ecs-task"
-  assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume.json 
+  assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume.json
 }
 
 # 2. 로그 제너레이터가 Kinesis Stream에 단건·다건 레코드를 쓸 수 있도록 권한 정의
