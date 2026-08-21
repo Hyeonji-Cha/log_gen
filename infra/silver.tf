@@ -15,3 +15,40 @@ resource "aws_kinesis_stream" "silver" {
     DataLayer = "silver"
   }
 }
+
+resource "aws_kinesis_firehose_delivery_stream" "silver" {
+
+  name = local.firehose_name
+
+  destination = "extended_s3"
+
+  kinesis_source_configuration {
+
+    kinesis_stream_arn = aws_kinesis_stream.silver.arn
+
+    role_arn = aws_iam_role.firehose.arn
+  }
+
+
+  extended_s3_configuration {
+
+    bucket_arn = aws_s3_bucket.data.arn
+
+    role_arn = aws_iam_role.firehose.arn
+
+    buffering_size     = var.firehose_buffer_size
+    buffering_interval = var.firehose_buffer_interval
+
+    compression_format = "GZIP"
+
+    custom_time_zone = "Asia/Seoul"
+
+    prefix = "silver/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/hour=!{timestamp:HH}/"
+
+
+    error_output_prefix = "errors/silver/!{firehose:error-output-type}/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/hour=!{timestamp:HH}/"
+  }
+  depends_on = [
+    aws_iam_role_policy.firehose_silver
+  ]
+}
