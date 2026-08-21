@@ -27,6 +27,7 @@ resource "aws_s3_object" "flink_app" {
 
 # flink 자체 내용
 resource "aws_kinesisanalyticsv2_application" "silver" {
+  provider    = aws.flink_no_tags
   name        = local.flink_application_name
   description = "Raw(Bronze) Kinesis events to Silver Kinesis using PyFlink"
   # 런타임 환경 -> 1.20
@@ -117,8 +118,8 @@ resource "aws_kinesisanalyticsv2_application" "silver" {
     aws_s3_object.flink_app
   ]
 
-  tags = {
-    DataLayer = "silver"
-    Processor = "flink"
-  }
+  #   tags = {
+  #     DataLayer = "silver"
+  #     Processor = "flink"
+  #   }
 }

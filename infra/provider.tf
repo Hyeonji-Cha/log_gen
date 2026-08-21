@@ -17,3 +17,7 @@ data "aws_availability_zones" "available" {
 
 # [브론즈 추가] AWS Account ID 조회
 data "aws_caller_identity" "current" {}
+provider "aws" {
+  alias  = "flink_no_tags"
+  region = var.aws_region
+}
