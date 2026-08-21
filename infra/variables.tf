@@ -95,8 +95,8 @@ variable "silver_kinesis_shard_count" {
   default     = 1
 }
 
-variable "silver_kinesis_retantion_hour" {
-  description = "KDS's retantion period in a hour"
+variable "silver_kinesis_retention_hour" {
+  description = "KDS's retention period in hours"
   type        = number
   default     = 24
 }
@@ -133,7 +133,7 @@ variable "flink_start_application" {
 # 데이터는 게속 전송중 -> 추후 Flink 가동
 # -> 가동 전에 도달한 데이터도 처리할 것인가? flink 가동 이후 도착한 데이터만 처리할 것인가?
 # LATEST: flink 가동 후 들어오는 데이터만 처리
-# TRIM_HORIOZON: kinesis에 남아있는 과거 로그 데이터 모두 처리 -> 재처리/테스트/전체 데이터(이전) 처리
+# TRIM_HORIZON: kinesis에 남아있는 과거 로그 데이터 모두 처리 -> 재처리/테스트/전체 데이터(이전) 처리
 
 variable "flink_source_init_position" {
   description = "flink가 데이터 처리시 입력 왼쪽에 어디서부터 처리할 것인가 설정"
@@ -143,8 +143,8 @@ variable "flink_source_init_position" {
   validation {
     condition = contains([
       "LATEST",
-      "TRIM_HORIOZON"
+      "TRIM_HORIZON"
     ], var.flink_source_init_position)
-    error_message = "flink_source_init_position is only LATEST or TRIM HORIZON"
+    error_message = "flink_source_init_position must be LATEST or TRIM_HORIZON."
   }
 }
