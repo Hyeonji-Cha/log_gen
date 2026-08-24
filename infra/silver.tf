@@ -1,5 +1,5 @@
-# Silver Layer에서 사용되는 Kinesis(입력)
-# Flink에서 전송된 데이터를 획득 -> firehose(출력)로 전송
+# Silver 파이프라인 구성: Flink의 정제 데이터를 Silver Kinesis로 받고,
+# Silver 전용 Firehose가 데이터를 모아 S3의 silver/ 경로에 GZIP으로 적재한다.
 resource "aws_kinesis_stream" "silver" {
   name             = local.silver_kinesis_stream_name
   shard_count      = var.silver_kinesis_shard_count
