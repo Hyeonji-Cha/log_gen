@@ -36,11 +36,11 @@ data "aws_iam_policy_document" "flink" {
       aws_kinesis_stream.logs.arn
     ]
   }
+  # 실버 레벨에 존재하는 kinesis로 데이터 전송(쓰기, 출력스트림)에 대한 권한
   statement {
     sid    = "WriteSilverKinesis"
     effect = "Allow"
     actions = [
-      "kinesis:DescribeStreamSummary",
       "kinesis:PutRecord",
       "kinesis:PutRecords"
     ]
@@ -48,7 +48,18 @@ data "aws_iam_policy_document" "flink" {
       aws_kinesis_stream.silver.arn
     ]
   }
-  # S3에 저장된 Flink어플리케이션 코드(zip형태로 구성)
+  statement {
+    sid    = "WriteRejectKinesis"
+    effect = "Allow"
+    actions = [
+      "kinesis:PutRecord",
+      "kinesis:PutRecords"
+    ]
+    resources = [
+      aws_kinesis_stream.rejected.arn
+    ]
+  }
+  # s3에 저장된 flink 어플리케이션 코드(zip 형태로 구성)
   statement {
     sid    = "ReadFlinkCode"
     effect = "Allow"
@@ -57,7 +68,7 @@ data "aws_iam_policy_document" "flink" {
       "s3:GetObjectVersion"
     ]
     resources = [
-      # 내 버킷의 flink/ 경로에 업로드한 애플리케이션 파일만 읽기
+      # 본인 버킷/flink/*
       "${aws_s3_bucket.data.arn}/flink/*"
     ]
   }
@@ -73,7 +84,7 @@ data "aws_iam_policy_document" "flink" {
       "*"
     ]
   }
-  # 로그 쓰기
+  # 로그 쓰기 
   statement {
     sid    = "WriteFlinkLog"
     effect = "Allow"
@@ -81,7 +92,7 @@ data "aws_iam_policy_document" "flink" {
       "logs:PutLogEvents"
     ]
     resources = [
-      "${aws_cloudwatch_log_group.flink.arn}:*"
+      "${aws_cloudwatch_log_group.flink.arn}:*" # <- 수정
     ]
   }
 }
@@ -93,19 +104,30 @@ resource "aws_iam_role_policy" "flink" {
   policy = data.aws_iam_policy_document.flink.json
 }
 
-# Silver Firehose 서비스가 사용할 IAM Role
+
+# silver layer 에서 사용하는 firehose role
+data "aws_iam_policy_document" "firehose_silver_assume" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["firehose.amazonaws.com"]
+    }
+  }
+}
 resource "aws_iam_role" "firehose_silver" {
   name               = "${var.project_name}-firehose-silver-role"
-  assume_role_policy = data.aws_iam_policy_document.firehose_assume.json
+  assume_role_policy = data.aws_iam_policy_document.firehose_silver_assume.json
 }
-
-# Silver Firehose가 Silver Kinesis를 읽고 S3 silver/ 경로에 저장할 권한
 data "aws_iam_policy_document" "firehose_silver" {
+  # silver kinesis 읽기 권한 관련  
   statement {
-    sid    = "ReadSilverKinesis"
     effect = "Allow"
     actions = [
       "kinesis:DescribeStream",
+      "kinesis:DescribeStreamSummary",
       "kinesis:GetShardIterator",
       "kinesis:GetRecords",
       "kinesis:ListShards"
@@ -114,36 +136,83 @@ data "aws_iam_policy_document" "firehose_silver" {
       aws_kinesis_stream.silver.arn
     ]
   }
-
+  # s3 저장 권한 관련
   statement {
-    sid    = "InspectSilverBucket"
-    effect = "Allow"
-    actions = [
-      "s3:GetBucketLocation",
-      "s3:ListBucket"
-    ]
-    resources = [
-      aws_s3_bucket.data.arn
-    ]
-  }
-
-  statement {
-    sid    = "WriteSilverObjects"
     effect = "Allow"
     actions = [
       "s3:AbortMultipartUpload",
+      "s3:GetBucketLocation",
+      "s3:ListBucket",
       "s3:PutObject"
     ]
     resources = [
-      "${aws_s3_bucket.data.arn}/silver/*",
-      "${aws_s3_bucket.data.arn}/errors/silver/*"
+      aws_s3_bucket.data.arn,       # 해당 버킷
+      "${aws_s3_bucket.data.arn}/*" # 해당 버킷 이하 모든 경로
+    ]
+  }
+  # [GLUE] Firehose가 JSON -> Parquet로 변환 처리시 GLue catalog의 Schema 조회할수 있는 권한 부여
+  statement {
+    effect = "Allow"
+    actions = [
+      "glue:GetTable",
+      "glue:GetTableVersion",
+      "glue:GetTableVersions"
+    ]
+    resources = ["*"]
+  }
+}
+resource "aws_iam_role_policy" "firehose_silver" {
+  name   = "${var.project_name}-firehose-silver-s3-policy"
+  role   = aws_iam_role.firehose_silver.id
+  policy = data.aws_iam_policy_document.firehose_silver.json
+}
+
+# rejected용 데이터 파이프라인 구성을 위한 firehose role 작성
+data "aws_iam_policy_document" "firehose_rejected_assume" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["firehose.amazonaws.com"]
+    }
+  }
+}
+resource "aws_iam_role" "firehose_rejected" {
+  name               = "${var.project_name}-firehose-rejected-role"
+  assume_role_policy = data.aws_iam_policy_document.firehose_rejected_assume.json
+}
+data "aws_iam_policy_document" "firehose_rejected" {
+  statement {
+    effect = "Allow"
+    actions = [
+      "kinesis:DescribeStream",
+      "kinesis:DescribeStreamSummary",
+      "kinesis:GetShardIterator",
+      "kinesis:GetRecords",
+      "kinesis:ListShards"
+    ]
+    resources = [
+      aws_kinesis_stream.rejected.arn
+    ]
+  }
+  statement {
+    effect = "Allow"
+    actions = [
+      "s3:AbortMultipartUpload",
+      "s3:GetBucketLocation",
+      "s3:ListBucket",
+      "s3:PutObject"
+    ]
+    resources = [
+      aws_s3_bucket.data.arn,       # 해당 버킷
+      "${aws_s3_bucket.data.arn}/*" # 해당 버킷 이하 모든 경로
     ]
   }
 }
-
-# Silver Firehose Role에 Kinesis 읽기와 S3 쓰기 권한 연결
-resource "aws_iam_role_policy" "firehose_silver" {
-  name   = "${var.project_name}-firehose-silver-policy"
-  role   = aws_iam_role.firehose_silver.id
-  policy = data.aws_iam_policy_document.firehose_silver.json
+resource "aws_iam_role_policy" "firehose_rejected" {
+  name   = "${var.project_name}-firehose-rejected-s3-policy"
+  role   = aws_iam_role.firehose_rejected.id
+  policy = data.aws_iam_policy_document.firehose_rejected.json
 }

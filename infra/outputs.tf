@@ -54,3 +54,50 @@ output "firehose_name" {
 output "s3_bucket_name" {
   value = aws_s3_bucket.data.bucket
 }
+
+# 실버, rejected  추가
+output "silver_kinesis_stream_name" {
+  value = aws_kinesis_stream.silver.name
+}
+output "silver_kinesis_stream_arn" {
+  value = aws_kinesis_stream.silver.arn
+}
+output "silver_firehose_name" {
+  value = aws_kinesis_firehose_delivery_stream.silver.name
+}
+
+output "rejected_kinesis_stream_name" {
+  value = aws_kinesis_stream.rejected.name
+}
+output "rejected_kinesis_stream_arn" {
+  value = aws_kinesis_stream.rejected.arn
+}
+output "rejected_firehose_name" {
+  value = aws_kinesis_firehose_delivery_stream.rejected.name
+}
+
+# flink 정보 출력
+output "flink_application_name" {
+  value = aws_kinesisanalyticsv2_application.silver.name
+}
+output "flink_application_arn" {
+  value = aws_kinesisanalyticsv2_application.silver.arn
+}
+# 앱 실행중, 준비중, 중단,...
+output "flink_application_status" {
+  value = aws_kinesisanalyticsv2_application.silver.status
+}
+output "flink_code_s3_prefix" {
+  value = "s3://${aws_s3_bucket.data.bucket}/flink/"
+}
+output "flink_log_group_name" {
+  value = aws_cloudwatch_log_group.flink.name
+}
+
+# Glue 관련
+output "silver_glue_database_name" {
+  value = aws_glue_catalog_database.silver.name
+}
+output "silver_glue_table_name" {
+  value = aws_glue_catalog_table.silver.name
+}

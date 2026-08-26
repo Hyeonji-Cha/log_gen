@@ -28,6 +28,84 @@ SILVER_SCHEMA_VERSION = "1.0"
 # 현재 Silver 데이터 구조의 버전을 상수로 관리한다.
 # 이후 Silver 필드 구조나 정제 규칙이 크게 바뀌면 1.1, 2.0 등으로 변경하여 데이터 계보를 추적할 수 있다.
 
+REJECT_SCHEMA_VERSION = "1.0"
+# Reject 데이터 구조의 버전을 별도로 관리하여 Silver 스키마와 독립적으로 변경 이력을 추적한다.
+
+
+def _parse_payload(payload: Any):
+    # Silver와 Reject 처리에서 공통으로 사용할 JSON 기본 검사를 수행한다.
+    # 반환값은 파싱된 이벤트와 Reject 사유이며, 정상인 경우 Reject 사유는 None이다.
+
+    if payload is None:
+        # 입력 데이터 자체가 없는 경우 파싱할 수 없으므로 Reject 사유를 반환한다.
+        return None, "payload_null"
+
+    if isinstance(payload, bytes):
+        # bytes 입력은 JSON 파싱 전에 UTF-8 문자열로 변환한다.
+        try:
+            payload = payload.decode("utf-8")
+        except UnicodeDecodeError:
+            # UTF-8로 해석할 수 없는 원본은 별도 Reject 대상으로 분류한다.
+            return None, "invalid_utf8"
+
+    if not isinstance(payload, str):
+        # 문자열이 아닌 입력도 기존 정제 방식과 동일하게 문자열로 변환한 후 파싱한다.
+        payload = str(payload)
+
+    try:
+        # JSON 문자열을 Python 객체로 변환한다.
+        event = json.loads(payload)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        # JSON 문법이나 입력값이 올바르지 않으면 파싱 실패 사유를 반환한다.
+        return None, "invalid_json"
+
+    if not isinstance(event, dict):
+        # 유효한 JSON이어도 최상위 구조가 Object가 아니면 이벤트로 처리하지 않는다.
+        return None, "no_json_object"
+
+    # 기본 검사를 통과한 JSON Object와 정상 상태를 반환한다.
+    return event, None
+
+
+def _validate_event(event: dict) -> Optional[str]:
+    # JSON 문법 검사 이후 이벤트 내부의 공통 필드와 데이터 품질을 검사한다.
+    required_fields = ["event_id", "domain", "occurred_at"]
+
+    for field in required_fields:
+        # 필수 필드가 없거나 값이 null이면 각각 구분된 Reject 사유를 반환한다.
+        if field not in event:
+            return f"missing_required_field:{field}"
+        if event[field] is None:
+            return f"null_required_field:{field}"
+
+    # 공통 필수 필드는 모두 문자열 타입이어야 한다.
+    if not isinstance(event["event_id"], str):
+        return "wrong_type:event_id"
+    if not isinstance(event["domain"], str):
+        return "wrong_type:domain"
+    if not isinstance(event["occurred_at"], str):
+        return "wrong_type:occurred_at"
+
+    try:
+        # UTC를 나타내는 Z 접미사를 +00:00으로 바꿔 ISO-8601 형식인지 확인한다.
+        datetime.fromisoformat(event["occurred_at"].replace("Z", "+00:00"))
+    except (ValueError, TypeError, AttributeError):
+        return "invalid_timestamp"
+
+    if "latency_ms" in event:
+        # 선택 필드인 latency_ms가 존재하면 null, 숫자 타입, 음수 여부를 검사한다.
+        latency = event["latency_ms"]
+        if latency is None:
+            return "null_latency"
+        # bool은 Python에서 int의 하위 타입이므로 유효한 숫자로 처리되지 않도록 명시적으로 제외한다.
+        if isinstance(latency, bool) or not isinstance(latency, (int, float)):
+            return "wrong_type:latency_ms"
+        if latency < 0:
+            return "negative_latency"
+
+    # 모든 데이터 품질 검사를 통과한 정상 이벤트다.
+    return None
+
 
 def clean_event_payload(payload: Any) -> Optional[str]:
     # Raw Kinesis에서 전달된 하나의 레코드를 받아 Silver용 JSON 문자열로 정제하는 핵심 함수다.
@@ -94,6 +172,10 @@ def clean_event_payload(payload: Any) -> Optional[str]:
         return None
         # 최상위 JSON Object가 아닌 레코드는 Silver Stream으로 전달하지 않는다.
 
+    if _validate_event(event) is not None:
+        # 내부 필드 검사를 통과하지 못한 이벤트는 Silver Stream에서 제외한다.
+        return None
+
     # 최상위 null 값을 가진 필드를 제거한다.
     # 예: {"user_id": 1, "email": null} -> {"user_id": 1}
     # 현재 단계에서는 중첩 객체 내부의 null까지 재귀적으로 제거하지 않고 최상위 필드만 정리한다.
@@ -137,3 +219,50 @@ def clean_event_payload(payload: Any) -> Optional[str]:
         # datetime 등 JSON이 기본적으로 직렬화하지 못하는 값이 들어오면 str()로 변환하여 직렬화를 시도한다.
     )
     # 완성된 Silver JSON 문자열을 호출한 main.py의 clean_event UDF에 반환한다.
+
+
+def reject_event_payload(payload: Any) -> Optional[str]:
+    # Raw Kinesis payload를 검사하여 오염된 데이터만 Reject용 JSON 문자열로 변환한다.
+    # 정상 데이터는 None을 반환하여 Reject Stream에서 제외한다.
+
+    event, reject_reason = _parse_payload(payload)
+    # JSON 파싱 가능 여부와 최상위 구조를 먼저 검사한다.
+
+    if reject_reason is None:
+        # JSON 기본 검사를 통과한 경우에만 내부 데이터 품질 검사를 수행한다.
+        reject_reason = _validate_event(event)
+
+    if reject_reason is None:
+        # 모든 검사를 통과한 정상 데이터는 Reject 대상으로 만들지 않는다.
+        return None
+
+    if isinstance(payload, bytes):
+        # 원본이 bytes이면 가능한 경우 UTF-8 문자열로 복원하여 저장한다.
+        try:
+            original_payload = payload.decode("utf-8")
+        except UnicodeDecodeError:
+            # UTF-8 복원이 불가능하면 bytes 표현식을 사용하여 원본 정보를 보존한다.
+            original_payload = repr(payload)
+    else:
+        # bytes가 아닌 입력은 전달받은 원본 값을 그대로 보존한다.
+        original_payload = payload
+
+    rejected = {
+        # Reject 처리 메타데이터와 오염된 원본 payload를 하나의 객체로 구성한다.
+        "_reject": {
+            "layer": "rejected",
+            "processor": "apache-flink",
+            "schema_version": REJECT_SCHEMA_VERSION,
+            "reason": reject_reason,
+            "processed_at": datetime.now(timezone.utc).isoformat(),
+        },
+        "original_payload": original_payload,
+    }
+
+    return json.dumps(
+        # Reject 객체를 Kinesis로 전송할 수 있는 JSON 문자열로 직렬화한다.
+        rejected,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        default=str,
+    )

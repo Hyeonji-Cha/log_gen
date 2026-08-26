@@ -28,7 +28,7 @@ from pyflink.table import DataTypes, EnvironmentSettings, TableEnvironment
 from pyflink.table.udf import udf
 # 일반 Python 함수를 Flink SQL에서 호출 가능한 UDF(User Defined Function)로 등록하기 위해 사용한다.
 
-from transform import clean_event_payload
+from transform import clean_event_payload, reject_event_payload
 # 실제 JSON 정제 규칙은 transform.py에 분리되어 있으며 이 함수를 호출해 Bronze 데이터를 Silver 형태로 변환한다.
 
 
@@ -51,6 +51,19 @@ def clean_event(payload: str):
 
     return clean_event_payload(payload)
     # 실제 정제는 transform.py의 clean_event_payload()에 위임하고 그 결과를 그대로 반환한다.
+
+
+@udf(result_type=DataTypes.STRING())
+# 아래 reject_event 함수를 Flink SQL에서 호출할 수 있는 Python UDF로 변환한다.
+# result_type=STRING은 이 함수가 Reject JSON 문자열 또는 NULL을 반환한다는 의미다.
+def reject_event(payload: str):
+    # Flink SQL에서 전달받은 STRING payload를 인자로 받는다.
+
+    """Flink SQL에서 호출하는 Reject UDF."""
+    # 이 함수는 Flink SQL과 transform.py의 Reject 생성 로직 사이를 연결하는 래퍼 역할을 한다.
+
+    return reject_event_payload(payload)
+    # 실제 Reject 데이터 생성은 transform.py의 reject_event_payload()에 위임한다.
 
 
 def _project_dir() -> str:
@@ -173,6 +186,9 @@ def main() -> None:
     output_props = _property_map(properties, "OutputStream0")
     # Runtime Property에서 Silver 출력 Kinesis 설정 그룹인 OutputStream0을 가져온다.
 
+    reject_props = _property_map(properties, "RejectStream0")
+    # Runtime Property에서 오염 데이터 출력 Kinesis 설정 그룹인 RejectStream0을 가져온다.
+
     input_stream_arn = input_props["stream.arn"]
     # 입력 Kinesis Data Stream의 ARN을 읽는다.
     # 이 스트림은 로그 생성기가 데이터를 전송하는 Bronze/Raw Kinesis Stream이다.
@@ -190,9 +206,18 @@ def main() -> None:
     output_region = output_props["aws.region"]
     # Silver Kinesis Stream이 존재하는 AWS Region을 읽는다.
 
+    reject_stream_arn = reject_props["stream.arn"]
+    # 오염된 데이터를 기록할 Reject Kinesis Data Stream ARN을 읽는다.
+
+    reject_region = reject_props["aws.region"]
+    # Reject Kinesis Stream이 존재하는 AWS Region을 읽는다.
+
     table_env.create_temporary_system_function("clean_event", clean_event)
     # Python 함수 clean_event를 Flink SQL에서 clean_event(...) 이름으로 사용할 수 있도록 등록한다.
     # temporary system function이므로 현재 Flink Job 실행 동안만 존재한다.
+
+    table_env.create_temporary_system_function("reject_event", reject_event)
+    # Python 함수 reject_event를 Flink SQL에서 reject_event(...) 이름으로 사용할 수 있도록 등록한다.
 
     # ------------------------------------------------------------------
     # Source: 기존 Raw/Bronze Kinesis Stream
@@ -201,10 +226,10 @@ def main() -> None:
     # 따라서 여기서 도메인별 컬럼 스키마를 고정하지 않고 레코드 전체를 STRING payload 하나로 받는다.
     # 'format'='raw'를 사용하면 Kinesis 레코드 값을 그대로 문자열 형태로 전달할 수 있다.
     table_env.execute_sql(
-        # Flink SQL DDL을 실행하여 Bronze Kinesis Stream을 raw_stream이라는 논리 테이블로 등록한다.
+        # Flink SQL DDL을 실행하여 Bronze Kinesis Stream을 bronze_stream이라는 논리 테이블로 등록한다.
 
         f"""
-        CREATE TABLE raw_stream (
+        CREATE TABLE bronze_stream (
             payload STRING
         )
         WITH (
@@ -216,7 +241,7 @@ def main() -> None:
         )
         """
         # CREATE TABLE은 실제 데이터를 복사하지 않는다.
-        # raw_stream이라는 Table API 이름과 실제 Kinesis Stream 사이의 연결 정보를 Flink에 등록한다.
+        # bronze_stream이라는 Table API 이름과 실제 Kinesis Stream 사이의 연결 정보를 Flink에 등록한다.
         # payload STRING: Kinesis 레코드 전체를 하나의 문자열 컬럼으로 취급한다.
         # connector='kinesis': 이 테이블의 실제 데이터 소스가 Amazon Kinesis임을 지정한다.
         # stream.arn: 읽을 Kinesis Stream을 ARN으로 지정한다.
@@ -256,33 +281,76 @@ def main() -> None:
     # Sink 테이블 등록 SQL 실행 호출을 종료한다.
 
     # ------------------------------------------------------------------
+    # Sink: 데이터 품질 검사를 통과하지 못한 Reject Kinesis Stream
+    # ------------------------------------------------------------------
+    # Reject 사유와 원본 payload를 포함한 JSON 문자열을 rejected_stream으로 전송한다.
+    table_env.execute_sql(
+        # Flink SQL DDL을 실행하여 Reject Kinesis Stream을 rejected_stream이라는 Sink 테이블로 등록한다.
+
+        f"""
+        CREATE TABLE rejected_stream (
+            payload STRING
+        )
+        WITH (
+            'connector' = 'kinesis',
+            'stream.arn' = '{reject_stream_arn}',
+            'aws.region' = '{reject_region}',
+            'sink.batch.max-size' = '100',
+            'format' = 'raw'
+        )
+        """
+    )
+    # Reject Sink 테이블 등록 SQL 실행 호출을 종료한다.
+
+    # ------------------------------------------------------------------
     # Bronze -> Silver 변환 및 전송
     # ------------------------------------------------------------------
-    # raw_stream에서 payload를 읽는다.
+    # bronze_stream에서 payload를 읽는다.
     # Python UDF clean_event(payload)를 적용하여 transform.py의 정제 규칙을 실행한다.
     # JSON 파싱 실패, JSON Object가 아닌 데이터 등은 clean_event가 None을 반환한다.
     # Flink SQL에서는 Python None이 SQL NULL로 변환된다.
     # WHERE cleaned_payload IS NOT NULL 조건을 이용하여 잘못된 데이터는 Silver Stream에 넣지 않는다.
     # 정상적으로 정제된 JSON 문자열만 silver_stream으로 INSERT한다.
-    result = table_env.execute_sql(
-        # 아래 INSERT INTO SQL을 실행하면 실제 Streaming Job이 시작된다.
+    statement_set = table_env.create_statement_set()
+    # Silver와 Reject INSERT를 하나의 Flink Job으로 실행하기 위한 StatementSet을 생성한다.
+
+    statement_set.add_insert_sql(
+        # 정상 데이터의 Silver INSERT SQL을 StatementSet에 추가한다.
 
         """
         INSERT INTO silver_stream
         SELECT cleaned_payload
         FROM (
             SELECT clean_event(payload) AS cleaned_payload
-            FROM raw_stream
+            FROM bronze_stream
         )
         WHERE cleaned_payload IS NOT NULL
         """
-        # 내부 SELECT: raw_stream의 각 payload에 clean_event UDF를 적용한다.
+        # 내부 SELECT: bronze_stream의 각 payload에 clean_event UDF를 적용한다.
         # AS cleaned_payload: UDF 결과에 cleaned_payload라는 임시 컬럼명을 붙인다.
         # 외부 SELECT: 정제 결과 컬럼만 선택한다.
         # WHERE ... IS NOT NULL: 정제 실패 레코드를 제외한다.
         # INSERT INTO silver_stream: 살아남은 정제 레코드를 Silver Kinesis로 지속 전송한다.
     )
-    # execute_sql()이 반환한 TableResult를 result 변수에 저장한다.
+    # 정상 데이터만 Silver Kinesis Stream으로 전송하는 INSERT 등록을 종료한다.
+
+    statement_set.add_insert_sql(
+        # 오염 데이터의 Reject INSERT SQL을 동일한 StatementSet에 추가한다.
+
+        """
+        INSERT INTO rejected_stream
+        SELECT rejected_payload
+        FROM (
+            SELECT reject_event(payload) AS rejected_payload
+            FROM bronze_stream
+        )
+        WHERE rejected_payload IS NOT NULL
+        """
+    )
+    # Reject JSON이 생성된 데이터만 Reject Kinesis Stream으로 전송한다.
+
+    result = statement_set.execute()
+    # 두 Sink INSERT가 포함된 하나의 Streaming Job을 실행하고 TableResult를 저장한다.
 
     if IS_LOCAL:
         # AWS Managed Flink에서는 서비스가 Job 수명주기를 관리하므로 별도의 wait가 필요하지 않다.
