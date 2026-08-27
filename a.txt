@@ -1,0 +1,1 @@
+/Users/edu/Documents/de/log_gen/scripts/build-flink.bat: line 8: where: command not found
